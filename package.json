@@ -1,0 +1,11 @@
+{
+   "name": "Node.js API cache",
+   "description": "Caching proxy server for external API calls. Useful for development & remaining within rate limits.",
+   "version": "0.0.1",
+   "dependencies": {
+      "express": "3.x",
+      "limiter": "1.x",
+      "underscore": "1.5.x",
+      "node-cache": "0.4.0"
+   }
+}
