@@ -16,7 +16,7 @@ var apiOptions = {
 
 // Server config
 var options = {
-  memCache: true,          // true = memory, false = use filesystem
+  memCache: false,          // true = memory, false = use filesystem
   nodePort: 3000,           // port to start server on
   rateLimit: true,          // throttle requests, bool
   rateLimitValue: 20,       // quota: req per time unit
@@ -35,6 +35,10 @@ if (options.memCache) {
   var cache     = new NodeCache();
 } else {
   var fs = require("fs");
+  if (!fs.existsSync('./data/')) {
+    console.log('Data directory doesnt exist. Creating...');
+    fs.mkdirSync('./data/');
+  }
 }
 
 // Start server
@@ -56,12 +60,9 @@ app.use(function(req, res, next){
   var key          = generateKey();
   var filePath     = "./data/" + key + '.json';
   
-  if (options.memCache) {
-    tryCache();
-  } else {
-    tryFileSystem();
-  }
-
+  // Check cache
+  (options.memCache) ? tryCache() : tryFileSystem();
+  
   function generateKey() {
     var md5sum = crypto.createHash('md5');
     md5sum.update(req.path + '?' + refineQueryString(req.query));
@@ -123,10 +124,10 @@ app.use(function(req, res, next){
 
   function apiResponseEnd(output) {
     output = stripCallback(output); // remove JSONP callback from cached version
-
-    (options.memCache) ? saveToCache(output) : saveToFile(ouput);
     
-    respondToClient(output); // Push result to user
+    (options.memCache) ? saveToCache(output) : saveToFile(output);
+    
+    respondToClient(output);
   }
 
   function saveToCache(output) {
@@ -161,7 +162,7 @@ app.use(function(req, res, next){
 
   function refineQueryString(reqQuery) {
     // strip the jQuery cachebuster and callback to make the filename
-    delete reqQuery['_'];           
+    delete reqQuery['_'];
     delete reqQuery['callback'];
     return qs.stringify(reqQuery);
   }
