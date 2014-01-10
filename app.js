@@ -157,7 +157,7 @@ app.use(function(req, res, next){
 
   function respondToClient(data) {
     res.set({"Content-Type": "application/json"});
-    res.write(callbackName + '(' + data + ')');
+    res.write(callbackName + '(' + data + ')'); // JSON -> JSONP
     res.end();
   }
 
