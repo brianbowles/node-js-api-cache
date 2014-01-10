@@ -16,7 +16,8 @@ var apiOptions = {
 
 // Server config
 var options = {
-  memCache: false,          // true = memory, false = use filesystem
+  memCache: true,           // true = memory, false = use filesystem
+  memCacheTime: 0,          // Seconds, 0 = unlimited
   nodePort: 3000,           // port to start server on
   rateLimit: true,          // throttle requests, bool
   rateLimitValue: 20,       // quota: req per time unit
@@ -32,7 +33,7 @@ if (options.rateLimit) {
 // NodeCache memory cache - optional
 if (options.memCache) {
   var NodeCache = require('node-cache');
-  var cache     = new NodeCache();
+  var cache     = new NodeCache({stdTTL: options.memCacheTime, checkperiod: options.memCacheTime});
 } else {
   var fs = require("fs");
   if (!fs.existsSync('./data/')) {
