@@ -1,10 +1,10 @@
 // Required modules
-var express     = require('express');
-var http        = require('http');
-var https       = require('https');
-var fs          = require("fs");
-var qs          = require("querystring");
-var RateLimiter = require('limiter').RateLimiter;
+var express = require('express');
+var http    = require('http');
+var https   = require('https');
+var qs      = require('querystring');
+var crypto  = require('crypto');
+var _       = require('underscore');
 
 // API config
 var apiOptions = {
@@ -16,23 +16,33 @@ var apiOptions = {
 
 // Server config
 var options = {
-  nodePort: 3000,
+  memCache: true,          // true = memory, false = use filesystem
+  nodePort: 3000,           // port to start server on
   rateLimit: true,          // throttle requests, bool
   rateLimitValue: 20,       // quota: req per time unit
   rateLimitPeriod: 'minute' // quote: time for quota refresh: 'second', 'minute', 'hour'
 };
 
-// Rate limiter
+// Rate limiter - optional
 if (options.rateLimit) {
-  var limiter = new RateLimiter(options.rateLimitValue, options.rateLimitPeriod);
+  var RateLimiter = require('limiter').RateLimiter;
+  var limiter     = new RateLimiter(options.rateLimitValue, options.rateLimitPeriod);
+}
+
+// NodeCache memory cache - optional
+if (options.memCache) {
+  var NodeCache = require('node-cache');
+  var cache     = new NodeCache();
+} else {
+  var fs = require("fs");
 }
 
 // Start server
 var app = express();
 app.enable("jsonp callback");
+
 app.listen(options.nodePort);
 console.log("Starting API cache for %s. Listening on port 3000.", apiOptions.hostname);
-
 
 app.use(function(req, res, next){
 
@@ -43,20 +53,44 @@ app.use(function(req, res, next){
   }
   
   var callbackName = req.param('callback');
-  var refinedQS    = refineQueryString(req.query);
-  var fileName     = (req.path + '_' + refinedQS).replace(/[^a-z0-9]/gi, '_').toLowerCase();
-  var filePath     = "./data/" + fileName + '.json';
+  var key          = generateKey();
+  var filePath     = "./data/" + key + '.json';
+  
+  if (options.memCache) {
+    tryCache();
+  } else {
+    tryFileSystem();
+  }
 
-  // check if the file exists
-  fs.exists(filePath, function (exists) {
-    if (!exists) {
-      console.log('cache MISS : %s %s', req.method, req.url);
-      startRequest();
-    } else {
-      console.log('cache HIT: %s %s', req.method, req.url);
-      loadFromFile();
-    }
-  });
+  function generateKey() {
+    var md5sum = crypto.createHash('md5');
+    md5sum.update(req.path + '?' + refineQueryString(req.query));
+    return md5sum.digest('hex');
+  }
+
+  function tryCache() {
+    cache.get(key, function(err, value){
+      if(_.isEmpty(value)){
+        console.log('cache MISS: %s %s', req.method, req.url);
+        startRequest();
+      } else {
+        console.log('cache HIT: %s %s', req.method, req.url);
+        respondToClient(value[key]);
+      }
+    });
+  }
+
+  function tryFileSystem() {
+    fs.exists(filePath, function (exists) {
+      if (!exists) {
+        console.log('file cache MISS: %s %s', req.method, req.url);
+        startRequest();
+      } else {
+        console.log('file cache HIT: %s %s', req.method, req.url);
+        loadFromFile();
+      }
+    });
+  }
 
   function startRequest() {
     apiOptions.path = req.originalUrl;
@@ -90,11 +124,21 @@ app.use(function(req, res, next){
   function apiResponseEnd(output) {
     output = stripCallback(output); // remove JSONP callback from cached version
 
-    fs.writeFile(filePath, output, function (err) { // Write to disk
-      (err) ? console.log('save error') : console.log('saved: ' + filePath);
-    });
-
+    (options.memCache) ? saveToCache(output) : saveToFile(ouput);
+    
     respondToClient(output); // Push result to user
+  }
+
+  function saveToCache(output) {
+    cache.set(key, output, function(err, success){
+      (!err && success) ? console.log('Saved to cache') : console.log('Cache save error');
+    });
+  }
+
+  function saveToFile(output) {
+    fs.writeFile(filePath, output, function (err) { // Write to disk
+      (err) ? console.log('Save error') : console.log('Saved: ' + filePath);
+    });
   }
 
   function loadFromFile() {
@@ -110,7 +154,6 @@ app.use(function(req, res, next){
   }
 
   function respondToClient(data) {
-    // req.setEncoding('utf8');
     res.set({"Content-Type": "application/json"});
     res.write(callbackName + '(' + data + ')');
     res.end();
@@ -123,7 +166,7 @@ app.use(function(req, res, next){
     return qs.stringify(reqQuery);
   }
 
-  function stripCallback(ouput) {
+  function stripCallback(output) {
     return output.substring(output.indexOf("(") + 1, output.lastIndexOf(")"));
   }
  
