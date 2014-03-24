@@ -18,7 +18,7 @@ var apiOptions = {
 var options = {
   memCache: true,           // true = memory, false = use filesystem
   memCacheTime: 0,          // Seconds, 0 = unlimited
-  nodePort: 3000,           // port to start server on
+  nodePort: 3001,           // port to start server on
   rateLimit: true,          // throttle requests, bool
   rateLimitValue: 20,       // quota: req per time unit
   rateLimitPeriod: 'minute' // quote: time for quota refresh: 'second', 'minute', 'hour'
