@@ -1,5 +1,10 @@
 # Node.js API cache
 
+This is the basis for the middleware of the Neureal.net project. With a p2p network hitting an API we need more control over the source so that IPs are not blacklisted etc.  We will also add additional data to the API as per needed by the neureal network.
+
+
+------
+
 Caching proxy server for external API calls. Configure the external API endpoint and make requests against localhost. If the request has been made before it'll be served from the local cache. 
 
 E.g:
