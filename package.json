@@ -1,5 +1,5 @@
 {
-   "name": "Node.js API cache",
+   "name": "neureal-API-cache",
    "description": "Caching proxy server for external API calls. Useful for development & remaining within rate limits.",
    "version": "0.0.1",
    "dependencies": {
