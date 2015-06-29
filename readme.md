@@ -1,4 +1,4 @@
-# Node.js API cache
+# Node.js Proxy Oracle for Neureal.net.
 
 This is the basis for the middleware of the Neureal.net project. With a p2p network hitting an API we need more control over the source so that IPs are not blacklisted etc.  We will also add additional data to the API as per needed by the neureal network.
 
