@@ -1,4 +1,5 @@
 // Required modules
+//var fifo = require('fifo')(); the node-cache cleans out according to seconds, which is sufficient for now.. fifo not needed?
 var express = require('express');
 var http    = require('http');
 var https   = require('https');
@@ -7,24 +8,27 @@ var crypto  = require('crypto');
 var _       = require('underscore');
 var moment  = require('moment');
 
+
+//var fifoCnt = 0;
 // API config
 var apiOptions = {
   hostname: 'www.bitstamp.net',
   port: 443,
   path: '/api/ticker/',
+  dataName: 'last',
 //  auth: process.env.GITHUB_APPLICATION_KEY, // 'username:pass'
-  headers: {'User-agent' : 'node-api-cache'}
+  headers: {'User-agent' : 'neureal-net-proxy'}
 };
 
 // Server config
 var options = {
   memCache: true,           // true = memory, false = use filesystem
-  memCacheTime: 0,          // Seconds, 0 = unlimited
+  memCacheTime: 600,         // Seconds, 0 = unlimited
   nodePort: 3001,           // port to start server on
   rateLimit: true,          // throttle requests, bool
   rateLimitValue: 20,       // quota: req per time unit
-  rateLimitPeriod: 'minute', // quote: time for quota refresh: 'minute', 'hour' , 'day' .. second not supported
-  dataElement:'last'
+  rateLimitPeriod: 'minute' // quote: time for quota refresh: 'minute', 'hour' , 'day' .. second not supported
+
 };
 
 // Rate limiter - optional
@@ -68,24 +72,40 @@ console.log("Starting API cache for %s. Listening on port " + options.nodePort, 
 
 app.use(function(req, res, next){
 
+    if (req.url === '/favicon.ico') { 
+	res.send('OK');
+	return;
+    }
+    var filePath,key;
+    console.log("url=" + req.url.substr(0,9) + " - [" + req.url +"]");
+    if (req.url.substr(0,9) === '/history/') { 
+	key = req.url.substr(9,req.url.length - 9);
+	filePath = "./data/" + key + '.json';
+	console.log("Trying history with [%s]",key);
+	(options.memCache) ? tryHistoryCache() : tryHistoryFileSystem();
+	return;
+    }
+
     //console.log(req);  
     var callbackName = req.param('callback');
 
     // So we need a key that is changed once per time window during the limiter
     // strip out millisecs .. then put them back in as needed
-    var curDate = new Date();
-    var keyDate = moment(Math.round((curDate) / 1000)*1000);  // remove sub-second resolution
+
+    var currentDate = moment(Math.round((new Date()) / 1000)*1000);  // remove sub-second resolution
 
     // See http://momentjs.com/docs/#/displaying/ this allows complete customization of output string
     // have the key not change until a new time period
-    var key = moment(keyDate - (((keyDate / 1000) % secondsPerLimiter))*1000).format();
+    // the modulo enforces a unique key per time frame of tick
+    var keyDate = moment(currentDate - (((currentDate / 1000) % secondsPerLimiter))*1000);
 
-    var tick = Math.floor(keyDate / (secondsPerLimiter * 1000));
+    var tick = Math.round(keyDate / (secondsPerLimiter * 1000));
+    key = tick; // Lets just use the tick as the key to make things simpler
 
-    //console.log("secondsPerLimiter" + " = " + secondsPerLimiter + " --- " + (keyDate % secondsPerLimiter));
-    //console.log(moment(keyDate).format() + " --- " + key);
+    //console.log("secondsPerLimiter" + " = " + secondsPerLimiter + " --- " + (currentDate % secondsPerLimiter));
+    //console.log(moment(currentDate).format() + " --- " + key);
 
-    var filePath     = "./data/" + key + '.json';
+    filePath     = "./data/" + key + '.json';
   
     // Check cache
     (options.memCache) ? tryCache() : tryFileSystem();
@@ -100,6 +120,30 @@ app.use(function(req, res, next){
         respondToClient(value[key]);
       }
     });
+  }
+  function tryHistoryCache() {
+    cache.get(key, function(err, value) {
+      if(_.isEmpty(value)){
+        console.log('history MISS');
+	return; // TODO define a missed history request
+      } else {
+        console.log('history HIT');
+        respondToClient(value[key]);
+      }
+    });
+  }
+
+  function tryHistoryFileSystem() {
+    fs.exists(filePath, function (exists) {
+      if (!exists) {
+        console.log('history file cache MISS: %s %s', req.method, req.url);
+	return;
+      } else {
+        console.log('history file cache HIT: %s %s', req.method, req.url);
+        loadFromFile();
+      }
+    });
+
   }
 
   function tryFileSystem() {
@@ -144,9 +188,9 @@ app.use(function(req, res, next){
       var obj = JSON.parse(output);
       var retObj = {};
 
-      retObj['data'] = obj[options.dataElement];
+      retObj['data'] = obj[apiOptions.dataName];
       retObj['tick'] = tick;
-      retObj['date'] = key;
+      retObj['date'] = keyDate;
 
       return JSON.stringify(retObj);
   }
@@ -187,18 +231,24 @@ app.use(function(req, res, next){
       }
     });
   }
+/*
+  function pruneMemCache(lastKey) {
 
-  function pruneMemCache() {
-      // TODO
+      fifoCnt++;
+      fifo.push(lastKey);
+      if (fifoCnt > 100) {
+	  fifo.shift();
+
+      }
   }
-
+*/
   function respondToClient(data) {
     res.set({"Content-Type": "application/json"});
 
     //res.write(callbackName + '(' + data + ')'); // JSON -> JSONP
     res.write(data);
     res.end();
-    pruneMemCache();
+    //pruneMemCache();
   }
 
   function refineQueryString(reqQuery) {
